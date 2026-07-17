@@ -307,17 +307,27 @@ export default function App() {
         setUserProfile(profile)
 
         // Seed or check admin status
-        const encoded = encodeEmail(firebaseUser.email || '')
-        const uidSnap = await get(ref(db, `admins/${firebaseUser.uid}`))
-        const emailSnap = await get(ref(db, `admins/${encoded}`))
+        let isAdminUser = false
+        try {
+          const encoded = encodeEmail(firebaseUser.email || '')
+          const uidSnap = await get(ref(db, `admins/${firebaseUser.uid}`))
+          const emailSnap = await get(ref(db, `admins/${encoded}`))
 
-        // If admins node doesn't exist, we seed admin@tamatman.com as admin
-        const allAdminsSnap = await get(ref(db, 'admins'))
-        if (!allAdminsSnap.exists()) {
-          await set(ref(db, 'admins/admin@tamatman,com'), true)
+          // If admins node doesn't exist, we seed admin@tamatman.com as admin
+          try {
+            const allAdminsSnap = await get(ref(db, 'admins'))
+            if (!allAdminsSnap.exists()) {
+              await set(ref(db, 'admins/admin@tamatman,com'), true)
+            }
+          } catch (seedErr) {
+            // Seeding might fail due to database write rules for non-admins, ignore
+          }
+
+          isAdminUser = (uidSnap.exists() && uidSnap.val() === true) || (emailSnap.exists() && emailSnap.val() === true) || (profile.role === 'admin')
+        } catch (err) {
+          // If checking root admins node fails due to Permission denied, check the user profile role
+          isAdminUser = profile.role === 'admin'
         }
-
-        const isAdminUser = (uidSnap.exists() && uidSnap.val() === true) || (emailSnap.exists() && emailSnap.val() === true) || (profile.role === 'admin')
         setIsAdmin(isAdminUser)
       } else {
         setUser(null)
@@ -580,14 +590,25 @@ export default function App() {
 
         if (isAdminLoginMode) {
           // Check if admin verified
-          const encoded = encodeEmail(firebaseUser.email || '')
-          const uidSnap = await get(ref(db, `admins/${firebaseUser.uid}`))
-          const emailSnap = await get(ref(db, `admins/${encoded}`))
-          const userRef = ref(db, `users/${firebaseUser.uid}`)
-          const userSnap = await get(userRef)
-          const role = userSnap.exists() ? userSnap.val().role : 'user'
+          let isUserAdmin = false
+          try {
+            const encoded = encodeEmail(firebaseUser.email || '')
+            const uidSnap = await get(ref(db, `admins/${firebaseUser.uid}`))
+            const emailSnap = await get(ref(db, `admins/${encoded}`))
+            const userRef = ref(db, `users/${firebaseUser.uid}`)
+            const userSnap = await get(userRef)
+            const role = userSnap.exists() ? userSnap.val().role : 'user'
 
-          const isUserAdmin = (uidSnap.exists() && uidSnap.val() === true) || (emailSnap.exists() && emailSnap.val() === true) || role === 'admin'
+            isUserAdmin = (uidSnap.exists() && uidSnap.val() === true) || (emailSnap.exists() && emailSnap.val() === true) || role === 'admin'
+          } catch (err) {
+            console.error("Admin verification failed:", err)
+            // Fallback: check profile role if we can't read the admins node due to permissions
+            const userRef = ref(db, `users/${firebaseUser.uid}`)
+            const userSnap = await get(userRef)
+            const role = userSnap.exists() ? userSnap.val().role : 'user'
+            isUserAdmin = role === 'admin'
+          }
+
           if (!isUserAdmin) {
             await signOut(auth)
             setAuthError('Access Denied: You are not authorized as an administrator.')
