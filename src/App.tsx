@@ -38,6 +38,7 @@ const loadRazorpayScript = () => {
 }
 
 const encodeEmail = (email: string) => email.replace(/\./g, ',')
+const checkAdminVal = (val: any) => val === true || (val && typeof val === 'object' && val.admin === true)
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -323,7 +324,7 @@ export default function App() {
             // Seeding might fail due to database write rules for non-admins, ignore
           }
 
-          isAdminUser = (uidSnap.exists() && uidSnap.val() === true) || (emailSnap.exists() && emailSnap.val() === true) || (profile.role === 'admin')
+          isAdminUser = (uidSnap.exists() && checkAdminVal(uidSnap.val())) || (emailSnap.exists() && checkAdminVal(emailSnap.val())) || (profile.role === 'admin')
         } catch (err) {
           // If checking root admins node fails due to Permission denied, check the user profile role
           isAdminUser = profile.role === 'admin'
@@ -599,7 +600,7 @@ export default function App() {
             const userSnap = await get(userRef)
             const role = userSnap.exists() ? userSnap.val().role : 'user'
 
-            isUserAdmin = (uidSnap.exists() && uidSnap.val() === true) || (emailSnap.exists() && emailSnap.val() === true) || role === 'admin'
+            isUserAdmin = (uidSnap.exists() && checkAdminVal(uidSnap.val())) || (emailSnap.exists() && checkAdminVal(emailSnap.val())) || role === 'admin'
           } catch (err) {
             console.error("Admin verification failed:", err)
             // Fallback: check profile role if we can't read the admins node due to permissions
